@@ -28,6 +28,7 @@ class MarketScanner:
         
         # Caching
         self.current_market_id: Optional[str] = None
+        self.market_title: str = "Mencari market..."
         self.yes_token_id: Optional[str] = None
         self.no_token_id: Optional[str] = None
         self.condition_id: Optional[str] = None
@@ -94,8 +95,17 @@ class MarketScanner:
                                 else:
                                     tokens = tokens_raw
                                 
-                                if len(tokens) >= 2 and market_id != self.current_market_id:
+                                try:
+                                    m_id_num = int(market_id)
+                                    cur_id_num = int(self.current_market_id or 0)
+                                except (ValueError, TypeError):
+                                    m_id_num = 0
+                                    cur_id_num = 0
+
+                                # Only switch if it's a NEW market (higher ID or first one)
+                                if len(tokens) >= 2 and m_id_num > cur_id_num:
                                     self.current_market_id = market_id
+                                    self.market_title = title
                                     self.condition_id = condition_id
                                     self.yes_token_id = tokens[0]
                                     self.no_token_id = tokens[1]

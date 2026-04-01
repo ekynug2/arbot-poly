@@ -125,7 +125,7 @@ async def main():
             await asyncio.sleep(1)
         
         # Update dashboard with market info
-        dashboard.update_market(scanner.current_market_id)
+        dashboard.update_market(scanner.market_title)
 
     # The WS client loop manages the connection to the CLOB orderbook
     ws_task = asyncio.create_task(ws_client.run())

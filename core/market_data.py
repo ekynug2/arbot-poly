@@ -216,5 +216,6 @@ class MarketDataClient:
     async def unsubscribe_and_reconnect(self):
         """Called when scanner detects a new market and flips tokens."""
         logger.info("Market rollover detected, forcing WS reconnect...")
-        if self._current_ws and not self._current_ws.closed:
+        # websockets 14.0+ uses .open
+        if self._current_ws and self._current_ws.open:
             await self._current_ws.close()
