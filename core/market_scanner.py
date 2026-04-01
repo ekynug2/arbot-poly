@@ -47,10 +47,13 @@ class MarketScanner:
                         
                     data = await response.json()
                     
-                    # Filter for BTC 5m events
+                    # Filter for BTC 5m events by slug
                     for event in data:
                         title = event.get("title", "")
-                        if "BTC" in title and "5m" in title and event.get("active"):
+                        slug = event.get("slug", "")
+                        
+                        # Match the current active event slug pattern (e.g., btc-updown-5m-1775034000)
+                        if "btc-updown-5m" in slug and event.get("active"):
                             
                             # Polymarket events contain 'markets'
                             markets = event.get("markets", [])
