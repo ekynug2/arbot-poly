@@ -12,6 +12,8 @@ from core.risk import RiskManager
 from core.wallet import WalletManager
 from utils.logger import configure_logger
 from utils.metrics import MetricsTracker
+from utils.dashboard import Dashboard
+from rich.live import Live
 
 logger = logging.getLogger(__name__)
 
@@ -45,13 +47,16 @@ async def main():
     risk_manager = RiskManager(settings)
     wallet_manager = WalletManager(settings)
     metrics = MetricsTracker(settings)
+    dashboard = Dashboard(mode_str)
 
-    # Optional: Log wallet balances on startup
+    # Optional: Initial wallet balances
     if wallet_manager.wallet_address and wallet_manager.check_connection():
         usdc_bal = wallet_manager.get_usdc_balance()
         pol_bal = wallet_manager.get_pol_balance()
-        logger.info(f"Wallet: {wallet_manager.wallet_address}")
-        logger.info(f"Balance: {usdc_bal:.2f} USDC.e | {pol_bal:.4f} POL")
+        dashboard.update_market("Mencari market...")
+        dashboard.update_wallet(f"{usdc_bal:.2f} USDC.e | {pol_bal:.4f} POL")
+    else:
+        dashboard.update_wallet("Offline / Not Connected")
 
     # 4. Central Callback Loop
     # This function is fired by MarketDataClient every time the top-of-book updates
@@ -61,6 +66,12 @@ async def main():
         yes_ask_s, yes_bid_s, 
         no_ask_s, no_bid_s
     ):
+        # Update Dashboard
+        dashboard.update_prices(
+            yes_ask_p, yes_bid_p, no_ask_p, no_bid_p,
+            yes_ask_s, yes_bid_s, no_ask_s, no_bid_s
+        )
+
         # A. Detect Arbitrage
         signal = arb_engine.evaluate(
             yes_ask_p, yes_bid_p,
@@ -69,9 +80,11 @@ async def main():
             no_ask_s, no_bid_s
         )
 
+        dashboard.update_signal(signal.action, signal.edge)
+
         if signal.action != "NONE":
             # Avoid spamming the log for identical opportunities
-            logger.info(f"[{signal.action}] Gross Edge: {signal.edge:.4f} | Max Size: ${signal.size_usdc:.2f}")
+            # logger.info(f"[{signal.action}] Gross Edge: {signal.edge:.4f} | Max Size: ${signal.size_usdc:.2f}")
             
             yes_id, no_id = scanner.get_current_tokens()
             metrics.log_opportunity(signal, yes_id, no_id)
@@ -104,34 +117,49 @@ async def main():
     # The scanner loop polls Gamma API for the new market every few minutes
     scanner_task = asyncio.create_task(scanner.run_scanner_loop(settings.scanner.scan_interval_sec))
     
-    # We must wait for the scanner to find the first market before connecting WS
+    # Initial market discovery spinner
     from rich.console import Console
     console = Console()
-    with console.status("[bold green]Tunggu sebentar... mencari market BTC 5-menitan yang aktif...", spinner="dots"):
-        while not scanner.get_current_tokens()[0]:
+    with console.status("[bold green]Mencari market BTC 5-menitan yang aktif...", spinner="dots"):
+        while not scanner.current_market_id:
             await asyncio.sleep(1)
-        # Empty line to clear spinner status gracefully
-        console.log("[bold green]✅ Market berhasil ditemukan!")
+        
+        # Update dashboard with market info
+        dashboard.update_market(scanner.current_market_id)
 
     # The WS client loop manages the connection to the CLOB orderbook
     ws_task = asyncio.create_task(ws_client.run())
 
-    # Create a background loop to constantly check if the scanner found a new token
-    # If it did, force the WS client to reconnect to the new tokens
     async def market_watcher():
         last_yes_id = scanner.get_current_tokens()[0]
         while True:
-            await asyncio.sleep(5)
+            await asyncio.sleep(1)
             curr_yes_id = scanner.get_current_tokens()[0]
             if curr_yes_id and curr_yes_id != last_yes_id:
-                logger.info("Market rollover detected in main loop. Forcing WS restart.")
+                logger.info("Market rollover detected.")
+                dashboard.update_market(scanner.current_market_id or "Mencari...")
                 last_yes_id = curr_yes_id
                 await ws_client.unsubscribe_and_reconnect()
+            
+            # Periodically update wallet info too
+            if wallet_manager.check_connection():
+                usdc = wallet_manager.get_usdc_balance()
+                dashboard.update_wallet(f"{usdc:.2f} USDC.e")
 
     watcher_task = asyncio.create_task(market_watcher())
 
     try:
-        await asyncio.gather(scanner_task, ws_task, watcher_task)
+        # WRAP GATHER IN LIVE DASHBOARD
+        with Live(dashboard.generate(), refresh_per_second=4) as live:
+            # Re-update function to keep Live rendering fresh
+            async def refresh_ui():
+                while True:
+                    live.update(dashboard.generate())
+                    await asyncio.sleep(0.25)
+            
+            refresh_task = asyncio.create_task(refresh_ui())
+            await asyncio.gather(scanner_task, ws_task, watcher_task, refresh_task)
+
     except asyncio.CancelledError:
         logger.info("Shutting down bot...")
     except KeyboardInterrupt:
