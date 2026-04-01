@@ -40,25 +40,29 @@ class MarketScanner:
         
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(endpoint, params=params, timeout=10) as response:
-                    if response.status != 200:
-                        logger.error(f"Failed to fetch markets: HTTP {response.status}")
-                        return False
-                        
-                    data = await response.json()
-                    
-                    # Filter for BTC 5m events by slug
-                    for event in data:
-                        title = event.get("title", "")
-                        slug = event.get("slug", "")
-                        
-                        # Match the current active event slug pattern (e.g., btc-updown-5m-1775034000)
-                        if "btc-updown-5m" in slug and event.get("active"):
+                for offset in range(0, 3000, 500):
+                    params["offset"] = str(offset)
+                    async with session.get(endpoint, params=params, timeout=10) as response:
+                        if response.status != 200:
+                            logger.error(f"Failed to fetch markets: HTTP {response.status}")
+                            break
                             
-                            # Polymarket events contain 'markets'
-                            markets = event.get("markets", [])
-                            if not markets:
-                                continue
+                        data = await response.json()
+                        if not data:
+                            break  # No more events
+                        
+                        # Filter for BTC 5m events by slug
+                        for event in data:
+                            title = event.get("title", "")
+                            slug = event.get("slug", "")
+                            
+                            # Match the current active event slug pattern (e.g., btc-updown-5m-1775034000)
+                            if "btc-updown-5m" in slug and event.get("active"):
+                                
+                                # Polymarket events contain 'markets'
+                                markets = event.get("markets", [])
+                                if not markets:
+                                    continue
                                 
                             # Typically the first market in the list is the one we want for single-market events
                             for market in markets:
