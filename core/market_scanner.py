@@ -40,11 +40,12 @@ class MarketScanner:
         now = int(time.time())
         window_start = now - (now % self.WINDOW_SEC)
         
-        # Check current window, next window, and previous window
+        # Prioritize: next window first, then current, then previous
+        # This avoids connecting to a market that is about to expire
         timestamps = [
-            window_start - self.WINDOW_SEC,  # previous
+            window_start + self.WINDOW_SEC,   # next (upcoming)
             window_start,                     # current
-            window_start + self.WINDOW_SEC,   # next
+            window_start - self.WINDOW_SEC,   # previous (fallback)
         ]
         return [f"btc-updown-5m-{ts}" for ts in timestamps]
 

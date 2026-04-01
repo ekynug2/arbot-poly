@@ -200,11 +200,18 @@ class MarketDataClient:
         while True:
             await self.connect_and_listen()
             
+            # When WS disconnects, trigger an immediate market rescan
+            # (the 5m market may have expired)
+            logger.info("WS disconnected. Triggering market rescan...")
+            found = await self.scanner.scan_for_active_market()
+            if found:
+                retry_delay = 1  # Reset backoff on new market
+            
             logger.info(f"Reconnecting to WebSocket in {retry_delay}s...")
             await asyncio.sleep(retry_delay)
             
-            # Exponential backoff
-            retry_delay = min(retry_delay * 2, 30)
+            # Exponential backoff (caps at 10s for fast market rotation)
+            retry_delay = min(retry_delay * 2, 10)
 
     async def unsubscribe_and_reconnect(self):
         """Called when scanner detects a new market and flips tokens."""

@@ -26,7 +26,7 @@ risk:
 
 # Market scanner
 scanner:
-  scan_interval_sec: 240        # Re-scan for new markets every 4 min
+  scan_interval_sec: 30          # Re-scan for new markets every 30s (5m markets rotate often)
   market_keyword: "BTC"         # Search term for market discovery
   market_type: "5m"             # Filter for 5-minute markets
 
