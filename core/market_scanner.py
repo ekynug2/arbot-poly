@@ -1,11 +1,13 @@
 """
 Market Discovery Engine (Gamma API).
 Finds the active BTC 5-minute market and its associated YES/NO token IDs.
+Uses direct slug calculation based on Unix timestamps for instant discovery.
 """
 
 import asyncio
 import logging
-from typing import Dict, Optional, Tuple
+import time
+from typing import Optional, Tuple
 
 import aiohttp
 
@@ -17,6 +19,8 @@ logger = logging.getLogger(__name__)
 class MarketScanner:
     """Scans Polymarket's Gamma API for BTC 5m markets."""
 
+    WINDOW_SEC = 300  # 5-minute windows
+
     def __init__(self, settings: Settings):
         self.settings = settings
         self.gamma_host = settings.polymarket.gamma_host.rstrip('/')
@@ -27,63 +31,73 @@ class MarketScanner:
         self.no_token_id: Optional[str] = None
         self.condition_id: Optional[str] = None
 
+    def _build_slugs(self) -> list:
+        """
+        Build candidate slugs based on the current time.
+        Checks previous, current, and next 5-minute windows.
+        """
+        now = int(time.time())
+        window_start = now - (now % self.WINDOW_SEC)
+        
+        # Check current window, next window, and previous window
+        timestamps = [
+            window_start - self.WINDOW_SEC,  # previous
+            window_start,                     # current
+            window_start + self.WINDOW_SEC,   # next
+        ]
+        return [f"btc-updown-5m-{ts}" for ts in timestamps]
+
     async def scan_for_active_market(self) -> bool:
         """
         Polls the Gamma API to find the currently active 5m BTC market.
+        Uses direct slug lookup for instant discovery.
         Returns True if a new market was found and cached.
         """
-        endpoint = f"{self.gamma_host}/events"
-        params = {
-            "active": "true",
-            "closed": "false",
-        }
+        slugs = self._build_slugs()
         
         try:
-            timeout = aiohttp.ClientTimeout(total=30)
+            timeout = aiohttp.ClientTimeout(total=15)
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                for offset in range(0, 3000, 500):
-                    params["offset"] = str(offset)
-                    logger.debug(f"Scanning events at offset {offset}...")
+                for slug in slugs:
+                    endpoint = f"{self.gamma_host}/events"
+                    params = {"slug": slug}
+                    
                     async with session.get(endpoint, params=params) as response:
                         if response.status != 200:
-                            logger.error(f"Failed to fetch markets: HTTP {response.status}")
-                            break
+                            logger.warning(f"Gamma API returned HTTP {response.status} for slug {slug}")
+                            continue
                             
                         data = await response.json()
                         if not data:
-                            break  # No more events
+                            continue
                         
-                        # Filter for BTC 5m events by slug
-                        for event in data:
-                            title = event.get("title", "")
-                            slug = event.get("slug", "")
-                            
-                            # Match the current active event slug pattern (e.g., btc-updown-5m-1775034000)
-                            if "btc-updown-5m" in slug and event.get("active"):
+                        event = data[0]
+                        title = event.get("title", "")
+                        
+                        if not event.get("active"):
+                            continue
+                        
+                        markets = event.get("markets", [])
+                        if not markets:
+                            continue
+                        
+                        for market in markets:
+                            if market.get("active") and not market.get("closed"):
+                                market_id = market.get("id")
+                                condition_id = market.get("conditionId")
+                                tokens = market.get("clobTokenIds", [])
                                 
-                                # Polymarket events contain 'markets'
-                                markets = event.get("markets", [])
-                                if not markets:
-                                    continue
-                                
-                                # Typically the first market in the list is the one we want for single-market events
-                                for market in markets:
-                                    if market.get("active") and not market.get("closed"):
-                                        market_id = market.get("id")
-                                        condition_id = market.get("conditionId")
-                                        tokens = market.get("clobTokenIds", [])
-                                        
-                                        if len(tokens) >= 2 and market_id != self.current_market_id:
-                                            self.current_market_id = market_id
-                                            self.condition_id = condition_id
-                                            self.yes_token_id = tokens[0]  # Standard assumption: Index 0 is YES
-                                            self.no_token_id = tokens[1]   # Standard assumption: Index 1 is NO
-                                            
-                                            logger.info(f"New Market Detected: {title}")
-                                            logger.info(f"Market ID: {self.current_market_id}")
-                                            logger.info(f"YES Token: {self.yes_token_id}")
-                                            logger.info(f"NO Token:  {self.no_token_id}")
-                                            return True
+                                if len(tokens) >= 2 and market_id != self.current_market_id:
+                                    self.current_market_id = market_id
+                                    self.condition_id = condition_id
+                                    self.yes_token_id = tokens[0]
+                                    self.no_token_id = tokens[1]
+                                    
+                                    logger.info(f"New Market Detected: {title}")
+                                    logger.info(f"Market ID: {self.current_market_id}")
+                                    logger.info(f"YES Token: {self.yes_token_id}")
+                                    logger.info(f"NO Token:  {self.no_token_id}")
+                                    return True
         except Exception as e:
             logger.error(f"Error scanning markets: {e}", exc_info=True)
             
@@ -97,6 +111,7 @@ class MarketScanner:
         """Continuously scans for the next market."""
         logger.info("Starting market scanner loop...")
         while True:
-            await self.scan_for_active_market()
-            # The 5m markets change every 5m. Polling every X seconds to catch the flip.
+            found = await self.scan_for_active_market()
+            if found:
+                logger.info(f"Next scan in {scan_interval}s...")
             await asyncio.sleep(scan_interval)
