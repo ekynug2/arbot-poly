@@ -105,9 +105,13 @@ async def main():
     scanner_task = asyncio.create_task(scanner.run_scanner_loop(settings.scanner.scan_interval_sec))
     
     # We must wait for the scanner to find the first market before connecting WS
-    logger.info("Awaiting initial market discovery...")
-    while not scanner.get_current_tokens()[0]:
-        await asyncio.sleep(1)
+    from rich.console import Console
+    console = Console()
+    with console.status("[bold green]Tunggu sebentar... mencari market BTC 5-menitan yang aktif...", spinner="dots"):
+        while not scanner.get_current_tokens()[0]:
+            await asyncio.sleep(1)
+        # Empty line to clear spinner status gracefully
+        console.log("[bold green]✅ Market berhasil ditemukan!")
 
     # The WS client loop manages the connection to the CLOB orderbook
     ws_task = asyncio.create_task(ws_client.run())
