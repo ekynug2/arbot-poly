@@ -64,24 +64,24 @@ class MarketScanner:
                                 if not markets:
                                     continue
                                 
-                            # Typically the first market in the list is the one we want for single-market events
-                            for market in markets:
-                                if market.get("active") and not market.get("closed"):
-                                    market_id = market.get("id")
-                                    condition_id = market.get("conditionId")
-                                    tokens = market.get("clobTokenIds", [])
-                                    
-                                    if len(tokens) >= 2 and market_id != self.current_market_id:
-                                        self.current_market_id = market_id
-                                        self.condition_id = condition_id
-                                        self.yes_token_id = tokens[0]  # Standard assumption: Index 0 is YES
-                                        self.no_token_id = tokens[1]   # Standard assumption: Index 1 is NO
+                                # Typically the first market in the list is the one we want for single-market events
+                                for market in markets:
+                                    if market.get("active") and not market.get("closed"):
+                                        market_id = market.get("id")
+                                        condition_id = market.get("conditionId")
+                                        tokens = market.get("clobTokenIds", [])
                                         
-                                        logger.info(f"New Market Detected: {title}")
-                                        logger.info(f"Market ID: {self.current_market_id}")
-                                        logger.info(f"YES Token: {self.yes_token_id}")
-                                        logger.info(f"NO Token:  {self.no_token_id}")
-                                        return True
+                                        if len(tokens) >= 2 and market_id != self.current_market_id:
+                                            self.current_market_id = market_id
+                                            self.condition_id = condition_id
+                                            self.yes_token_id = tokens[0]  # Standard assumption: Index 0 is YES
+                                            self.no_token_id = tokens[1]   # Standard assumption: Index 1 is NO
+                                            
+                                            logger.info(f"New Market Detected: {title}")
+                                            logger.info(f"Market ID: {self.current_market_id}")
+                                            logger.info(f"YES Token: {self.yes_token_id}")
+                                            logger.info(f"NO Token:  {self.no_token_id}")
+                                            return True
         except Exception as e:
             logger.error(f"Error scanning markets: {e}", exc_info=True)
             
