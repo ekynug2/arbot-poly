@@ -1,0 +1,39 @@
+# ──────────────────────────────────────────────
+# Polymarket BTC 5m Arbitrage Bot Configuration
+# ──────────────────────────────────────────────
+
+# Polymarket API
+polymarket:
+  clob_host: "https://clob.polymarket.com"
+  gamma_host: "https://gamma-api.polymarket.com"
+  ws_url: "wss://ws-subscriptions-clob.polymarket.com/ws/market"
+  chain_id: 137  # Polygon Mainnet
+
+# Trading parameters
+trade:
+  paper_trading: true           # Start in paper mode (MVP)
+  max_position_pct: 0.02        # 2% of bankroll per trade
+  min_edge_threshold: 0.02      # Minimum 2 cent edge to trade
+  order_timeout_sec: 5          # Cancel unfilled orders after 5s
+  fallback_to_market_sec: 2     # Switch to market order after 2s
+  target_size_usdc: 10          # Default order size in USDC
+
+# Risk management
+risk:
+  max_daily_loss: 100           # Max daily loss in USDC
+  max_open_exposure: 500        # Max total open exposure in USDC
+  max_position_size: 50         # Max per-trade size in USDC
+
+# Market scanner
+scanner:
+  scan_interval_sec: 240        # Re-scan for new markets every 4 min
+  market_keyword: "BTC"         # Search term for market discovery
+  market_type: "5m"             # Filter for 5-minute markets
+
+# Logging
+logging:
+  level: "INFO"
+  file: "logs/arbot.log"
+  trades_file: "logs/trades.jsonl"
+  max_log_size_mb: 50
+  backup_count: 5
