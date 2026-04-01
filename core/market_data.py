@@ -87,44 +87,58 @@ class MarketDataClient:
         """Parse WS message and update book state."""
         try:
             data = json.loads(message)
-            event_type = data.get("event_type")
-            asset_id = data.get("asset_id")
             
-            if not asset_id or not event_type:
+            # WS may send arrays (e.g. initial batch); process each item
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict):
+                        await self._process_event(item)
                 return
-
-            yes_id, no_id = self.scanner.get_current_tokens()
-            if asset_id not in (yes_id, no_id):
+            
+            if not isinstance(data, dict):
                 return
                 
-            book = self.yes_book if asset_id == yes_id else self.no_book
-
-            if event_type == "book":
-                book.reset_from_snapshot(data)
-            elif event_type == "price_change":
-                book.update(data.get("changes", []))
-            elif event_type == "last_trade_price":
-                # We can log this, but right now we focus on the orderbook
-                pass
-            
-            # Fire callback if registered
-            if self.on_update:
-                yes_bid_p, yes_bid_s = self.yes_book.best_bid
-                yes_ask_p, yes_ask_s = self.yes_book.best_ask
-                no_bid_p, no_bid_s = self.no_book.best_bid
-                no_ask_p, no_ask_s = self.no_book.best_ask
-                
-                # Only fire if both books are somewhat populated
-                if yes_bid_p > 0 and no_bid_p > 0:
-                    await self.on_update(
-                        yes_ask_p, yes_bid_p, no_ask_p, no_bid_p,
-                        yes_ask_s, yes_bid_s, no_ask_s, no_bid_s
-                    )
+            await self._process_event(data)
 
         except json.JSONDecodeError:
             pass
         except Exception as e:
             logger.error(f"Error handling WS message: {e}", exc_info=True)
+
+    async def _process_event(self, data: dict):
+        """Process a single WS event dict."""
+        event_type = data.get("event_type")
+        asset_id = data.get("asset_id")
+        
+        if not asset_id or not event_type:
+            return
+
+        yes_id, no_id = self.scanner.get_current_tokens()
+        if asset_id not in (yes_id, no_id):
+            return
+            
+        book = self.yes_book if asset_id == yes_id else self.no_book
+
+        if event_type == "book":
+            book.reset_from_snapshot(data)
+        elif event_type == "price_change":
+            book.update(data.get("changes", []))
+        elif event_type == "last_trade_price":
+            pass
+        
+        # Fire callback if registered
+        if self.on_update:
+            yes_bid_p, yes_bid_s = self.yes_book.best_bid
+            yes_ask_p, yes_ask_s = self.yes_book.best_ask
+            no_bid_p, no_bid_s = self.no_book.best_bid
+            no_ask_p, no_ask_s = self.no_book.best_ask
+            
+            # Only fire if both books are somewhat populated
+            if yes_bid_p > 0 and no_bid_p > 0:
+                await self.on_update(
+                    yes_ask_p, yes_bid_p, no_ask_p, no_bid_p,
+                    yes_ask_s, yes_bid_s, no_ask_s, no_bid_s
+                )
 
     async def _ping_loop(self, ws):
         """Keep-alive ping every 10 seconds."""

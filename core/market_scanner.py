@@ -5,6 +5,7 @@ Uses direct slug calculation based on Unix timestamps for instant discovery.
 """
 
 import asyncio
+import json
 import logging
 import time
 from typing import Optional, Tuple
@@ -85,7 +86,12 @@ class MarketScanner:
                             if market.get("active") and not market.get("closed"):
                                 market_id = market.get("id")
                                 condition_id = market.get("conditionId")
-                                tokens = market.get("clobTokenIds", [])
+                                tokens_raw = market.get("clobTokenIds", [])
+                                # API may return clobTokenIds as a JSON string
+                                if isinstance(tokens_raw, str):
+                                    tokens = json.loads(tokens_raw)
+                                else:
+                                    tokens = tokens_raw
                                 
                                 if len(tokens) >= 2 and market_id != self.current_market_id:
                                     self.current_market_id = market_id
