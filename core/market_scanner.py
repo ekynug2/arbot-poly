@@ -39,10 +39,12 @@ class MarketScanner:
         }
         
         try:
-            async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 for offset in range(0, 3000, 500):
                     params["offset"] = str(offset)
-                    async with session.get(endpoint, params=params, timeout=10) as response:
+                    logger.debug(f"Scanning events at offset {offset}...")
+                    async with session.get(endpoint, params=params) as response:
                         if response.status != 200:
                             logger.error(f"Failed to fetch markets: HTTP {response.status}")
                             break
